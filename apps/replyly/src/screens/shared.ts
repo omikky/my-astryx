@@ -14,3 +14,11 @@ export function statusVariant(status: OrderStatus): StatusDotVariant {
       return 'neutral';
   }
 }
+
+export function changeLabel(current: number, previous: number): string {
+  if (previous === 0) {
+    return current === 0 ? 'No activity yet' : 'New this week';
+  }
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return `${pct >= 0 ? '+' : ''}${pct}% vs last week`;
+}

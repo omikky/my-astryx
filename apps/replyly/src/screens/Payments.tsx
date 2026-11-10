@@ -6,23 +6,23 @@ import {Button} from '@astryxdesign/core/Button';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {Table, proportional, pixel} from '@astryxdesign/core/Table';
 import type {TableColumn} from '@astryxdesign/core/Table';
-import {ORDERS, naira} from '../data';
-import type {Order} from '../data';
-import {requestPaymentLink} from '../api';
-import type {PaymentLinkResult} from '../api';
+import {api} from '../api';
+import type {Order, PaymentLinkResult} from '../api';
+import {useAsync} from '../hooks';
+import {naira} from '../data';
 
 type OrderRow = Order & Record<string, unknown>;
-
 type Created = {order: Order; result: PaymentLinkResult};
 
 export default function Payments() {
+  const orders = useAsync(api.orders);
   const [email, setEmail] = useState('');
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const unpaid = ORDERS.filter(
+  const unpaid = (orders.data ?? []).filter(
     o => o.status === 'Awaiting payment' || o.status === 'New',
   ) as OrderRow[];
 
@@ -31,12 +31,9 @@ export default function Payments() {
     setCopied(false);
     setBusyId(order.id);
     try {
-      const result = await requestPaymentLink({
-        amount: order.amount,
-        email: email.trim(),
-        orderId: order.id,
-      });
+      const result = await api.paymentLink({orderId: order.id, email: email.trim()});
       setCreated({order, result});
+      await orders.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the link');
     } finally {
@@ -45,7 +42,7 @@ export default function Payments() {
   };
 
   const message = created?.result.url
-    ? `Hello ${created.order.customer.split(' ')[0]}, your order ${created.order.id} is ${naira(created.order.amount)}. Pay securely here: ${created.result.url}`
+    ? `Hello ${created.order.customer.split(' ')[0]}, your order ${created.order.code} is ${naira(created.order.amount)}. Pay securely here: ${created.result.url}`
     : '';
 
   const copy = async () => {
@@ -58,27 +55,16 @@ export default function Payments() {
   };
 
   const columns: TableColumn<OrderRow>[] = [
-    {key: 'id', header: 'Order', width: pixel(100)},
+    {key: 'code', header: 'Order', width: pixel(100)},
     {key: 'customer', header: 'Customer', width: pixel(160)},
     {key: 'items', header: 'Items', width: proportional(1)},
-    {
-      key: 'amount',
-      header: 'Amount',
-      width: pixel(110),
-      renderCell: item => naira(item.amount),
-    },
+    {key: 'amount', header: 'Amount', width: pixel(110), renderCell: item => naira(item.amount)},
     {
       key: 'action',
       header: '',
       width: pixel(150),
       renderCell: item => (
-        <Button
-          label="Create link"
-          size="sm"
-          variant="secondary"
-          isLoading={busyId === item.id}
-          onClick={() => createLink(item)}
-        />
+        <Button label="Create link" size="sm" variant="secondary" isLoading={busyId === item.id} onClick={() => void createLink(item)} />
       ),
     },
   ];
@@ -89,9 +75,7 @@ export default function Payments() {
         <VStack gap={5}>
           <VStack gap={1}>
             <Heading level={2}>Payments</Heading>
-            <Text color="secondary">
-              Create a Paystack payment link for an order and send it in the chat.
-            </Text>
+            <Text color="secondary">Create a Paystack payment link for an order and send it in the chat. Paid orders update automatically.</Text>
           </VStack>
 
           <TextInput
@@ -103,30 +87,23 @@ export default function Payments() {
             status={error ? {type: 'error', message: error} : undefined}
           />
 
-          <Table<OrderRow>
-            data={unpaid}
-            columns={columns}
-            idKey="id"
-            density="compact"
-            dividers="rows"
-            hasHover
-          />
+          {orders.isLoading ? (
+            <Text color="secondary">Loading orders…</Text>
+          ) : unpaid.length === 0 ? (
+            <Text color="secondary">No unpaid orders right now.</Text>
+          ) : (
+            <Table<OrderRow> data={unpaid} columns={columns} idKey="id" density="compact" dividers="rows" hasHover />
+          )}
 
           {created ? (
             <Card>
               <VStack gap={3}>
-                <Heading level={4}>
-                  {`Link for ${created.order.id} · ${naira(created.order.amount)}`}
-                </Heading>
+                <Heading level={4}>{`Link for ${created.order.code} · ${naira(created.order.amount)}`}</Heading>
                 {created.result.url ? (
                   <>
                     <Text>{message}</Text>
                     <HStack gap={2}>
-                      <Button
-                        label={copied ? 'Copied' : 'Copy message'}
-                        variant="primary"
-                        onClick={copy}
-                      />
+                      <Button label={copied ? 'Copied' : 'Copy message'} variant="primary" onClick={copy} />
                     </HStack>
                   </>
                 ) : (

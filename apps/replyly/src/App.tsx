@@ -10,6 +10,8 @@ import {
 } from '@astryxdesign/core/SideNav';
 import {NavIcon} from '@astryxdesign/core/NavIcon';
 import {Icon} from '@astryxdesign/core/Icon';
+import {Center} from '@astryxdesign/core/Center';
+import {Text} from '@astryxdesign/core/Text';
 import {
   ChartBarSquareIcon,
   ChatBubbleLeftRightIcon,
@@ -26,55 +28,69 @@ import Catalogue from './screens/Catalogue';
 import Payments from './screens/Payments';
 import Landing from './screens/Landing';
 import Login from './screens/Login';
-import {hasSession, signOut} from './session';
+import {api} from './api';
+import type {User} from './api';
 
 const ROUTES = {
-  '/': {label: 'Dashboard', icon: ChartBarSquareIcon, view: Dashboard},
-  '/inbox': {label: 'Inbox', icon: ChatBubbleLeftRightIcon, view: Inbox},
-  '/orders': {label: 'Orders', icon: ShoppingBagIcon, view: Orders},
-  '/catalogue': {label: 'Catalogue', icon: TagIcon, view: Catalogue},
-  '/payments': {label: 'Payments', icon: CreditCardIcon, view: Payments},
+  '/': {label: 'Dashboard', icon: ChartBarSquareIcon},
+  '/inbox': {label: 'Inbox', icon: ChatBubbleLeftRightIcon},
+  '/orders': {label: 'Orders', icon: ShoppingBagIcon},
+  '/catalogue': {label: 'Catalogue', icon: TagIcon},
+  '/payments': {label: 'Payments', icon: CreditCardIcon},
 } as const;
 
 type RoutePath = keyof typeof ROUTES;
 type PublicPath = '/welcome' | '/login';
 
-function currentPath(): RoutePath | PublicPath {
+function currentPath(signedIn: boolean): RoutePath | PublicPath {
   const path = window.location.hash.replace(/^#/, '') || '/';
   if (path === '/welcome' || path === '/login') {
     return path;
   }
-  if (!hasSession()) {
+  if (!signedIn) {
     return '/welcome';
   }
   return path in ROUTES ? (path as RoutePath) : '/';
 }
 
 export default function App() {
-  const [path, setPath] = useState<RoutePath | PublicPath>(currentPath);
+  const [user, setUser] = useState<User | null>(null);
+  const [isChecking, setIsChecking] = useState(true);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const onChange = () => setPath(currentPath());
+    api
+      .me()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setIsChecking(false));
+    const onChange = () => setTick(t => t + 1);
     window.addEventListener('hashchange', onChange);
     return () => window.removeEventListener('hashchange', onChange);
   }, []);
 
-  if (path === '/welcome') {
-    return (
-      <Theme theme={neutralTheme}>
-        <Landing />
-      </Theme>
-    );
-  }
-  if (path === '/login') {
-    return (
-      <Theme theme={neutralTheme}>
-        <Login />
-      </Theme>
-    );
+  useEffect(() => {
+    if (user && window.location.hash === '#/login') {
+      window.location.hash = '#/';
+    }
+  }, [user, tick]);
+
+  if (isChecking) {
+    return <Theme theme={neutralTheme}><Center padding={6}><Text color="secondary">Loading…</Text></Center></Theme>;
   }
 
-  const View = ROUTES[path].view;
+  const path = currentPath(user !== null);
+
+  if (path === '/welcome') {
+    return <Theme theme={neutralTheme}><Landing /></Theme>;
+  }
+  if (path === '/login' || !user) {
+    return <Theme theme={neutralTheme}><Login onAuthed={setUser} /></Theme>;
+  }
+
+  const signOut = () => {
+    void api.logout().finally(() => setUser(null));
+  };
 
   return (
     <Theme theme={neutralTheme}>
@@ -110,7 +126,11 @@ export default function App() {
             </SideNavSection>
           </SideNav>
         }>
-        <View />
+        {path === '/' ? <Dashboard user={user} /> : null}
+        {path === '/inbox' ? <Inbox /> : null}
+        {path === '/orders' ? <Orders /> : null}
+        {path === '/catalogue' ? <Catalogue /> : null}
+        {path === '/payments' ? <Payments /> : null}
       </AppShell>
     </Theme>
   );

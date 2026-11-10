@@ -8,24 +8,35 @@ import {Button} from '@astryxdesign/core/Button';
 import {Link} from '@astryxdesign/core/Link';
 import {Icon} from '@astryxdesign/core/Icon';
 import {BoltIcon} from '@heroicons/react/24/outline';
-import {signIn} from '../session';
+import {api} from '../api';
+import type {User} from '../api';
 
-export default function Login() {
+type Mode = 'signin' | 'signup';
+
+export default function Login({onAuthed}: {onAuthed: (user: User) => void}) {
+  const [mode, setMode] = useState<Mode>('signin');
+  const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const submit = () => {
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setError('Enter a valid email address');
-      return;
+  const isSignup = mode === 'signup';
+
+  const submit = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const user = isSignup
+        ? await api.signup({email, password, businessName})
+        : await api.login({email, password});
+      onAuthed(user);
+      window.location.hash = '#/';
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
+    } finally {
+      setBusy(false);
     }
-    if (password.length === 0) {
-      setError('Enter your password');
-      return;
-    }
-    signIn(email.trim());
-    window.location.hash = '#/';
   };
 
   return (
@@ -38,27 +49,32 @@ export default function Login() {
         <Card padding={8} width="100%">
           <VStack gap={4}>
             <VStack gap={1}>
-              <Heading level={3}>Sign in</Heading>
+              <Heading level={3}>{isSignup ? 'Create your account' : 'Sign in'}</Heading>
               <Text color="secondary">
-                Demo mode: any email and password will work.
+                {isSignup ? 'Set up your business in under a minute.' : 'Welcome back.'}
               </Text>
             </VStack>
-            <TextInput
-              label="Email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={setEmail}
-            />
+            {isSignup ? (
+              <TextInput label="Business name" autoComplete="organization" value={businessName} onChange={setBusinessName} />
+            ) : null}
+            <TextInput label="Email" type="email" autoComplete="email" value={email} onChange={setEmail} />
             <TextInput
               label="Password"
               type="password"
-              autoComplete="current-password"
+              autoComplete={isSignup ? 'new-password' : 'current-password'}
               value={password}
               onChange={setPassword}
               status={error ? {type: 'error', message: error} : undefined}
             />
-            <Button label="Sign in" variant="primary" onClick={submit} />
+            <Button label={isSignup ? 'Create account' : 'Sign in'} variant="primary" isLoading={busy} onClick={submit} />
+            <Button
+              label={isSignup ? 'I already have an account' : 'Create a new account'}
+              variant="secondary"
+              onClick={() => {
+                setMode(isSignup ? 'signin' : 'signup');
+                setError(null);
+              }}
+            />
             <Link href="#/welcome">Back to home</Link>
           </VStack>
         </Card>

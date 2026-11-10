@@ -19,66 +19,87 @@ import {
 } from '@astryxdesign/core/Chat';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Badge} from '@astryxdesign/core/Badge';
+import {Button} from '@astryxdesign/core/Button';
 import {List, ListItem} from '@astryxdesign/core/List';
 import {Divider} from '@astryxdesign/core/Divider';
 import {StatusDot} from '@astryxdesign/core/StatusDot';
-import {CONVERSATIONS, PRODUCTS, BUSINESS_NAME} from '../data';
-import type {Conversation, ChatLine} from '../data';
-import {requestReply} from '../api';
+import {api} from '../api';
+import type {Conversation} from '../api';
+import {useAsync} from '../hooks';
+import {clockTime} from '../data';
 
 const styles = stylex.create({
   column: {height: '100%', minHeight: 0},
   scroll: {overflowY: 'auto', minHeight: 0},
   header: {padding: 16, alignItems: 'center'},
+  empty: {padding: 24},
 });
 
-function nowLabel() {
-  return new Date().toLocaleTimeString('en-NG', {hour: '2-digit', minute: '2-digit', hour12: false});
-}
-
 export default function Inbox() {
-  const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
-  const [selectedId, setSelectedId] = useState(CONVERSATIONS[0].id);
+  const conversations = useAsync(api.conversations);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selected = conversations.find(c => c.id === selectedId) ?? conversations[0];
 
-  const append = (id: string, line: ChatLine, needsHuman?: boolean) =>
-    setConversations(prev =>
-      prev.map(c =>
-        c.id === id
-          ? {
-              ...c,
-              preview: line.text,
-              needsHuman: needsHuman ?? c.needsHuman,
-              lines: [...c.lines, line],
-            }
-          : c,
-      ),
+  const list = conversations.data ?? [];
+  const selected = list.find(c => c.id === selectedId) ?? list[0] ?? null;
+
+  const replace = (updated: Conversation) =>
+    conversations.setData(prev =>
+      (prev ?? []).map(c => (c.id === updated.id ? updated : c)),
     );
 
   const simulateCustomer = async (text: string) => {
-    const id = selected.id;
-    const customerLine: ChatLine = {id: `${Date.now()}-c`, from: 'customer', text, time: nowLabel()};
-    append(id, customerLine);
+    if (!selected) {
+      return;
+    }
     setError(null);
     setIsThinking(true);
     try {
-      const history = [...selected.lines, customerLine].map(l => ({from: l.from, text: l.text}));
-      const result = await requestReply(history, PRODUCTS, BUSINESS_NAME);
-      append(
-        id,
-        {id: `${Date.now()}-b`, from: 'business', byAi: true, text: result.reply, time: nowLabel()},
-        result.needsHuman,
-      );
+      replace(await api.testMessage(selected.id, text));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The AI could not reply. Is the API server running?');
+      setError(e instanceof Error ? e.message : 'The AI could not reply.');
     } finally {
       setIsThinking(false);
     }
   };
 
-  const list = (
+  const markHandled = async () => {
+    if (!selected) {
+      return;
+    }
+    try {
+      replace(await api.markHandled(selected.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update the chat.');
+    }
+  };
+
+  if (conversations.isLoading) {
+    return (
+      <Layout height="fill">
+        <LayoutContent padding={6}><Text color="secondary">Loading conversations…</Text></LayoutContent>
+      </Layout>
+    );
+  }
+
+  if (!selected) {
+    return (
+      <Layout height="fill">
+        <LayoutContent padding={6}>
+          <Stack direction="vertical" gap={2} xstyle={styles.empty}>
+            <Heading level={3}>No conversations yet</Heading>
+            <Text color="secondary">
+              Chats from WhatsApp and Instagram will appear here once they are connected. To try the AI now, load sample data from the Dashboard.
+            </Text>
+            <HStack><Button label="Go to Dashboard" variant="secondary" href="#/" /></HStack>
+          </Stack>
+        </LayoutContent>
+      </Layout>
+    );
+  }
+
+  const listPane = (
     <Stack direction="vertical" xstyle={styles.column}>
       <HStack xstyle={styles.header}>
         <Heading level={5}>Conversations</Heading>
@@ -86,12 +107,12 @@ export default function Inbox() {
       <Divider />
       <StackItem size="fill" xstyle={styles.scroll}>
         <List density="compact" hasDividers={false}>
-          {conversations.map(c => (
+          {list.map(c => (
             <ListItem
               key={c.id}
               label={c.customer}
               description={`${c.channel} · ${c.preview}`}
-              isSelected={c.id === selectedId}
+              isSelected={c.id === selected.id}
               onClick={() => setSelectedId(c.id)}
               startContent={<Avatar name={c.customer} size="md" />}
               endContent={
@@ -114,17 +135,11 @@ export default function Inbox() {
         <Avatar name={selected.customer} size="md" />
         <StackItem size="fill">
           <Heading level={5}>{selected.customer}</Heading>
-          <Text type="supporting" color="secondary">
-            {selected.channel}
-          </Text>
+          <Text type="supporting" color="secondary">{selected.channel}</Text>
         </StackItem>
-        <StatusDot
-          variant={selected.needsHuman ? 'warning' : 'success'}
-          label={selected.needsHuman ? 'Needs you' : 'AI is handling this'}
-        />
-        <Text type="supporting">
-          {selected.needsHuman ? 'Needs you' : 'AI is handling this'}
-        </Text>
+        <StatusDot variant={selected.needsHuman ? 'warning' : 'success'} label={selected.needsHuman ? 'Needs you' : 'AI is handling this'} />
+        <Text type="supporting">{selected.needsHuman ? 'Needs you' : 'AI is handling this'}</Text>
+        {selected.needsHuman ? <Button label="Mark as handled" size="sm" variant="secondary" onClick={markHandled} /> : null}
       </HStack>
       <Divider />
       <StackItem size="fill" xstyle={styles.scroll}>
@@ -138,29 +153,19 @@ export default function Inbox() {
           }>
           <ChatMessageList density="balanced">
             {selected.lines.map(line => (
-              <ChatMessage
-                key={line.id}
-                sender={line.from === 'customer' ? 'assistant' : 'user'}>
+              <ChatMessage key={line.id} sender={line.from === 'customer' ? 'assistant' : 'user'}>
                 <ChatMessageBubble
                   metadata={
-                    <ChatMessageMetadata
-                      timestamp={`${line.time}${line.byAi ? ' · Replyly AI' : ''}`}
-                    />
+                    <ChatMessageMetadata timestamp={`${clockTime(line.createdAt)}${line.byAi ? ' · Replyly AI' : ''}`} />
                   }>
                   {line.text}
                 </ChatMessageBubble>
               </ChatMessage>
             ))}
             {isThinking ? (
-              <ChatMessage sender="user">
-                <ChatMessageBubble>Typing…</ChatMessageBubble>
-              </ChatMessage>
+              <ChatMessage sender="user"><ChatMessageBubble>Typing…</ChatMessageBubble></ChatMessage>
             ) : null}
-            {error ? (
-              <Text type="supporting" color="secondary">
-                {error}
-              </Text>
-            ) : null}
+            {error ? <Text type="supporting" color="secondary">{error}</Text> : null}
           </ChatMessageList>
         </ChatLayout>
       </StackItem>
@@ -170,7 +175,7 @@ export default function Inbox() {
   return (
     <Layout
       height="fill"
-      start={<LayoutPanel width={320} padding={0}>{list}</LayoutPanel>}
+      start={<LayoutPanel width={320} padding={0}>{listPane}</LayoutPanel>}
       content={<LayoutContent padding={0}>{thread}</LayoutContent>}
     />
   );
