@@ -22,7 +22,9 @@ import {Badge} from '@astryxdesign/core/Badge';
 import {List, ListItem} from '@astryxdesign/core/List';
 import {Divider} from '@astryxdesign/core/Divider';
 import {StatusDot} from '@astryxdesign/core/StatusDot';
-import {CONVERSATIONS} from '../data';
+import {CONVERSATIONS, PRODUCTS, BUSINESS_NAME} from '../data';
+import type {Conversation, ChatLine} from '../data';
+import {requestReply} from '../api';
 
 const styles = stylex.create({
   column: {height: '100%', minHeight: 0},
@@ -30,10 +32,51 @@ const styles = stylex.create({
   header: {padding: 16, alignItems: 'center'},
 });
 
+function nowLabel() {
+  return new Date().toLocaleTimeString('en-NG', {hour: '2-digit', minute: '2-digit', hour12: false});
+}
+
 export default function Inbox() {
+  const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
   const [selectedId, setSelectedId] = useState(CONVERSATIONS[0].id);
-  const selected =
-    CONVERSATIONS.find(c => c.id === selectedId) ?? CONVERSATIONS[0];
+  const [isThinking, setIsThinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const selected = conversations.find(c => c.id === selectedId) ?? conversations[0];
+
+  const append = (id: string, line: ChatLine, needsHuman?: boolean) =>
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === id
+          ? {
+              ...c,
+              preview: line.text,
+              needsHuman: needsHuman ?? c.needsHuman,
+              lines: [...c.lines, line],
+            }
+          : c,
+      ),
+    );
+
+  const simulateCustomer = async (text: string) => {
+    const id = selected.id;
+    const customerLine: ChatLine = {id: `${Date.now()}-c`, from: 'customer', text, time: nowLabel()};
+    append(id, customerLine);
+    setError(null);
+    setIsThinking(true);
+    try {
+      const history = [...selected.lines, customerLine].map(l => ({from: l.from, text: l.text}));
+      const result = await requestReply(history, PRODUCTS, BUSINESS_NAME);
+      append(
+        id,
+        {id: `${Date.now()}-b`, from: 'business', byAi: true, text: result.reply, time: nowLabel()},
+        result.needsHuman,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The AI could not reply. Is the API server running?');
+    } finally {
+      setIsThinking(false);
+    }
+  };
 
   const list = (
     <Stack direction="vertical" xstyle={styles.column}>
@@ -43,7 +86,7 @@ export default function Inbox() {
       <Divider />
       <StackItem size="fill" xstyle={styles.scroll}>
         <List density="compact" hasDividers={false}>
-          {CONVERSATIONS.map(c => (
+          {conversations.map(c => (
             <ListItem
               key={c.id}
               label={c.customer}
@@ -88,8 +131,9 @@ export default function Inbox() {
         <ChatLayout
           composer={
             <ChatComposer
-              placeholder={`Reply to ${selected.customer} yourself`}
-              onSubmit={() => {}}
+              placeholder={`Test the AI: type a message as ${selected.customer}`}
+              isDisabled={isThinking}
+              onSubmit={simulateCustomer}
             />
           }>
           <ChatMessageList density="balanced">
@@ -107,6 +151,16 @@ export default function Inbox() {
                 </ChatMessageBubble>
               </ChatMessage>
             ))}
+            {isThinking ? (
+              <ChatMessage sender="user">
+                <ChatMessageBubble>Typing…</ChatMessageBubble>
+              </ChatMessage>
+            ) : null}
+            {error ? (
+              <Text type="supporting" color="secondary">
+                {error}
+              </Text>
+            ) : null}
           </ChatMessageList>
         </ChatLayout>
       </StackItem>

@@ -14,7 +14,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import {ORDERS, WEEKLY, naira} from '../data';
+import {ORDERS, WEEKLY, BUSINESS_NAME, naira} from '../data';
 import type {Order} from '../data';
 import {statusVariant} from './shared';
 
@@ -59,7 +59,7 @@ export default function Dashboard() {
       <LayoutContent padding={6}>
         <VStack gap={6}>
           <VStack gap={1}>
-            <Heading level={2}>Good morning, Adaeze's Closet</Heading>
+            <Heading level={2}>{`Good morning, ${BUSINESS_NAME}`}</Heading>
             <Text color="secondary">
               Your assistant is live on WhatsApp and Instagram.
             </Text>

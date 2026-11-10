@@ -15,35 +15,64 @@ import {
   ChatBubbleLeftRightIcon,
   ShoppingBagIcon,
   TagIcon,
+  CreditCardIcon,
+  ArrowRightStartOnRectangleIcon,
   BoltIcon,
 } from '@heroicons/react/24/outline';
 import Dashboard from './screens/Dashboard';
 import Inbox from './screens/Inbox';
 import Orders from './screens/Orders';
 import Catalogue from './screens/Catalogue';
+import Payments from './screens/Payments';
+import Landing from './screens/Landing';
+import Login from './screens/Login';
+import {hasSession, signOut} from './session';
 
 const ROUTES = {
   '/': {label: 'Dashboard', icon: ChartBarSquareIcon, view: Dashboard},
   '/inbox': {label: 'Inbox', icon: ChatBubbleLeftRightIcon, view: Inbox},
   '/orders': {label: 'Orders', icon: ShoppingBagIcon, view: Orders},
   '/catalogue': {label: 'Catalogue', icon: TagIcon, view: Catalogue},
+  '/payments': {label: 'Payments', icon: CreditCardIcon, view: Payments},
 } as const;
 
 type RoutePath = keyof typeof ROUTES;
+type PublicPath = '/welcome' | '/login';
 
-function currentPath(): RoutePath {
+function currentPath(): RoutePath | PublicPath {
   const path = window.location.hash.replace(/^#/, '') || '/';
+  if (path === '/welcome' || path === '/login') {
+    return path;
+  }
+  if (!hasSession()) {
+    return '/welcome';
+  }
   return path in ROUTES ? (path as RoutePath) : '/';
 }
 
 export default function App() {
-  const [path, setPath] = useState<RoutePath>(currentPath);
+  const [path, setPath] = useState<RoutePath | PublicPath>(currentPath);
 
   useEffect(() => {
     const onChange = () => setPath(currentPath());
     window.addEventListener('hashchange', onChange);
     return () => window.removeEventListener('hashchange', onChange);
   }, []);
+
+  if (path === '/welcome') {
+    return (
+      <Theme theme={neutralTheme}>
+        <Landing />
+      </Theme>
+    );
+  }
+  if (path === '/login') {
+    return (
+      <Theme theme={neutralTheme}>
+        <Login />
+      </Theme>
+    );
+  }
 
   const View = ROUTES[path].view;
 
@@ -70,6 +99,14 @@ export default function App() {
                   isSelected={p === path}
                 />
               ))}
+            </SideNavSection>
+            <SideNavSection title="Account" isHeaderHidden>
+              <SideNavItem
+                label="Sign out"
+                icon={ArrowRightStartOnRectangleIcon}
+                href="#/welcome"
+                onClick={signOut}
+              />
             </SideNavSection>
           </SideNav>
         }>

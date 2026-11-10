@@ -44,6 +44,8 @@ export type Conversation = {
   lines: ChatLine[];
 };
 
+export const BUSINESS_NAME = "Adaeze's Closet";
+
 export const naira = (value: number) => `₦${value.toLocaleString('en-NG')}`;
 
 export const ORDERS: Order[] = [

@@ -6,4 +6,5 @@ import {astryxStylex} from '@astryxdesign/build/vite';
 
 export default defineConfig({
   plugins: [...astryxStylex(), react()],
+  server: {proxy: {'/api': 'http://localhost:8787'}},
 });
