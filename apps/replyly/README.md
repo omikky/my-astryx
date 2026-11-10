@@ -25,6 +25,19 @@ node server/index.mjs   # serves the built app and the API on :8787
 
 Set `COOKIE_SECURE=true` whenever the site is served over HTTPS.
 
+## Deploy
+
+The included `Dockerfile` builds a standalone image (it installs the published Astryx packages from npm, so it does not need the rest of the monorepo). The database lives in a file, so the host **must give you a persistent disk**, otherwise every restart wipes your accounts and orders. Render's free web services have no persistent disk; its paid instances do.
+
+**Render** (paid instance with a 1 GB disk): New, then Blueprint, pick this repo and branch. `render.yaml` is already set up. Add `ANTHROPIC_API_KEY` and `PAYSTACK_SECRET_KEY` when asked.
+
+**Fly.io** (volume): from `apps/replyly`, follow the commands at the top of `fly.toml`.
+
+After the first deploy:
+1. Open the site, sign up, and check `/api/status` shows `{"ai":true,"payments":true}`.
+2. In Paystack, set the webhook URL to `https://YOUR-DOMAIN/api/paystack/webhook`.
+3. Back up `/data/replyly.db` regularly (for example with `sqlite3 replyly.db ".backup backup.db"`).
+
 ## Configuration (environment variables)
 
 | Variable | Purpose |

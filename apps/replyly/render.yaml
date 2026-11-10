@@ -1,0 +1,19 @@
+# Render Blueprint. A persistent disk requires a paid instance (Render's free web services have none).
+services:
+  - type: web
+    name: replyly
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    rootDir: apps/replyly
+    plan: starter
+    healthCheckPath: /api/status
+    disk:
+      name: replyly-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
